@@ -1,0 +1,25 @@
+.room {
+    width: 100vw;
+    height: 650px;
+    display: flex;
+    justify-content: space-around;
+}
+
+.left {
+    display: flex;
+    flex: 0.5;
+    flex-direction: column;
+    justify-content: space-around;
+}
+
+.right {
+    display: flex;
+    flex: 0.5;
+    flex-direction: column;
+    justify-content: space-around;
+}
+
+.video {
+    display: flex;
+    flex-direction: column;
+}

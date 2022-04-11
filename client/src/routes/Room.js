@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState } from "react"
 import io from "socket.io-client"
 import { useParams } from "react-router-dom";
 import axios from "axios";
+import "./Room.css"
 
 const Room = () => {
     const userVideo = useRef();
@@ -10,16 +11,20 @@ const Room = () => {
     const socketRef = useRef();
     const otherUser = useRef();
     const userStream = useRef();
+    const sendChannel = useRef();
     const {roomID} = useParams();
     const [code, setCode] = useState('');
     const [output,setOutput] = useState('');
+    const [text, setText] = useState("");
+    const [otherVideo,setOtherVideo] = useState(false);
+    const [messages,setMessages] = useState([]);
 
     useEffect(() => {
+        socketRef.current = io.connect("/");
         navigator.mediaDevices.getUserMedia({ audio: true, video: true }).then(stream => {
             userVideo.current.srcObject = stream;
             userStream.current = stream;
 
-            socketRef.current = io.connect("/");
             socketRef.current.emit("join room", roomID);
 
             socketRef.current.on('other user', userID => {
@@ -37,12 +42,24 @@ const Room = () => {
 
             socketRef.current.on("ice-candidate", handleNewICECandidateMsg);
         });
+        
+        socketRef.current.on("user left", id => {
+            if(id == roomID) {
+                setOtherVideo(false)
+            }
+        })
 
-    }, []);
+    }, [callUser,handleRecieveCall,roomID]);
 
     function callUser(userID) {
         peerRef.current = createPeer(userID);
         userStream.current.getTracks().forEach(track => peerRef.current.addTrack(track, userStream.current));
+        sendChannel.current = peerRef.current.createDataChannel('sendChannel');
+        sendChannel.current.onmessage = handleRecieveMessage;
+    }
+
+    function handleRecieveMessage(e) {
+        setMessages(messages => [...messages,{yours: false, value: e.data}]);
     }
 
     function createPeer(userID) {
@@ -81,6 +98,10 @@ const Room = () => {
 
     function handleRecieveCall(incoming) {
         peerRef.current = createPeer();
+        peerRef.current.ondatachannel = (event) => {
+            sendChannel.current = event.channel;
+            sendChannel.current.onmessage = handleRecieveMessage;
+        }
         const desc = new RTCSessionDescription(incoming.sdp);
         peerRef.current.setRemoteDescription(desc).then(() => {
             userStream.current.getTracks().forEach(track => peerRef.current.addTrack(track, userStream.current));
@@ -121,8 +142,17 @@ const Room = () => {
     }
 
     function handleTrackEvent(e) {
+        if(e.streams){
+            setOtherVideo(true)
+        }
         partnerVideo.current.srcObject = e.streams[0];
     };
+
+    function sendMessage() {
+        sendChannel.current.send(text);
+        setMessages(messages => [...messages,{yours: true, value: text}]);
+        setText("");
+    }
 
     const handleSubmit = async () => {
         const payload = {
@@ -135,15 +165,36 @@ const Room = () => {
     }
 
     return (
-        <div>
-            <div className="video">
-                <video autoPlay style={{height: "400px", width: "400px", margin: "5px"}} ref={userVideo} />
-                <video autoPlay style={{height: "400px", width: "400px", margin: "5px"}} ref={partnerVideo} />
+        <div className="room">
+            <div className="left">
+                <div className="editor">
+                    <div className="type">
+                        <textarea rows="20" cols="50" value={code} onChange={(e) => {setCode(e.target.value)}} />
+                    </div>
+                    <button onClick={handleSubmit}>Submit</button>
+                    <div className="output">
+                        <p>{output}</p>
+                    </div>
+                </div>
             </div>
-            <div className="editor">
-                <textarea rows="20" cols="50" value={code} onChange={(e) => {setCode(e.target.value)}} />
-                <button onClick={handleSubmit}>Submit</button>
-                <p>{output}</p>
+            <div className="right">
+                <div className="video">
+                    <div className="myVideo">
+                        <video autoPlay style={{height: "400px", width: "400px", margin: "5px"}} ref={userVideo} />
+                    </div>
+                    {
+                        otherVideo ? 
+                            <div className="otherVideo">
+                                <video autoPlay style={{height: "400px", width: "400px", margin: "5px"}} ref={partnerVideo} />
+                            </div> 
+                            : <p>no user</p>
+                    }
+                </div>
+                {/* {messages.forEach(msg => {
+                    <p>{msg.value}</p>                    
+                })}
+                <input type="text" value={text} onChange={e => setText(e.target.value)}></input>
+                <button onClick={sendMessage}>send</button> */}
             </div>
         </div>
     );
